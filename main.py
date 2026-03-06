@@ -3,135 +3,344 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget,
     QVBoxLayout, QHBoxLayout,
     QLabel, QComboBox, QGroupBox,
-    QFormLayout, QLineEdit,
-    QCheckBox, QPushButton,
-    QMessageBox
+    QLineEdit, QPushButton,
+    QScrollArea, QSplitter
 )
 from PySide6.QtCore import Qt
 
 
+GENERIC_PROTOCOLS = {
+
+    "UART": [
+        "Status Register",
+        "Control Register",
+        "Data Register",
+        "Baud Register"
+    ],
+
+    "SPI": [
+        "Status Register",
+        "Control Register",
+        "Data Register",
+        "Clock Register"
+    ],
+
+    "I2C": [
+        "Status Register",
+        "Control Register",
+        "Data Register",
+        "Clock Register"
+    ]
+}
+
+
+ARCH_REGISTERS = {
+
+    "ARM": {
+
+        "UART": {
+            "Status Register": ("SR", ["TXE", "RXNE", "TC"]),
+            "Control Register": ("CR1", ["UE", "TE", "RE", "RXNEIE"]),
+            "Data Register": ("DR", ["DATA"]),
+            "Baud Register": ("BRR", ["DIV_MANTISSA", "DIV_FRACTION"])
+        },
+
+        "SPI": {
+            "Status Register": ("SR", ["RXNE", "TXE", "BSY"]),
+            "Control Register": ("CR1", ["SPE", "MSTR", "CPOL", "CPHA"]),
+            "Data Register": ("DR", ["DATA"]),
+            "Clock Register": ("CR2", ["SSOE"])
+        },
+
+        "I2C": {
+            "Status Register": ("SR1", ["TXE", "RXNE", "BTF"]),
+            "Control Register": ("CR1", ["PE", "START", "STOP", "ACK"]),
+            "Data Register": ("DR", ["DATA"]),
+            "Clock Register": ("CCR", ["FREQ"])
+        }
+    },
+
+
+    "AVR": {
+
+        "UART": {
+            "Status Register": ("UCSRA", ["RXC", "TXC", "UDRE"]),
+            "Control Register": ("UCSRB", ["RXEN", "TXEN"]),
+            "Data Register": ("UDR", ["DATA"]),
+            "Baud Register": ("UBRR", ["BAUD"])
+        },
+
+        "SPI": {
+            "Status Register": ("SPSR", ["SPIF"]),
+            "Control Register": ("SPCR", ["SPE", "MSTR"]),
+            "Data Register": ("SPDR", ["DATA"]),
+            "Clock Register": ("SPCR", ["SPR0", "SPR1"])
+        },
+
+        "I2C": {
+            "Status Register": ("TWSR", ["TWS"]),
+            "Control Register": ("TWCR", ["TWINT", "TWSTA"]),
+            "Data Register": ("TWDR", ["DATA"]),
+            "Clock Register": ("TWBR", ["BITRATE"])
+        }
+    },
+
+
+    "Espressif": {
+
+        "UART": {
+            "Status Register": ("UART_STATUS_REG", ["TXFIFO_CNT", "RXFIFO_CNT"]),
+            "Control Register": ("UART_CONF0_REG", ["UART_TX_EN", "UART_RX_EN"]),
+            "Data Register": ("UART_FIFO_REG", ["DATA"]),
+            "Baud Register": ("UART_CLKDIV_REG", ["CLKDIV"])
+        },
+
+        "SPI": {
+            "Status Register": ("SPI_CMD_REG", ["USR"]),
+            "Control Register": ("SPI_CTRL_REG", ["SPI_ENABLE"]),
+            "Data Register": ("SPI_W0_REG", ["DATA"]),
+            "Clock Register": ("SPI_CLOCK_REG", ["CLKDIV"])
+        },
+
+        "I2C": {
+            "Status Register": ("I2C_STATUS_REG", ["BUS_BUSY"]),
+            "Control Register": ("I2C_CTR_REG", ["TRANS_START"]),
+            "Data Register": ("I2C_DATA_REG", ["DATA"]),
+            "Clock Register": ("I2C_CLK_CONF_REG", ["SCL_LOW", "SCL_HIGH"])
+        }
+    }
+
+}
+
+ARCHITECTURES = ["ARM", "AVR", "Espressif"]
+
+
 class MainWindow(QMainWindow):
+
     def __init__(self):
         super().__init__()
 
         self.setWindowTitle("ProtoConfig Studio")
-        self.setGeometry(100, 100, 1100, 650)
+        self.setGeometry(100, 100, 1100, 700)
+
+        self.setStyleSheet("""
+
+        QLabel:hover{ color:blue; }
+
+        QLineEdit:hover{ border:2px solid blue; }
+
+        QGroupBox{
+        border:2px solid #4CAF50;
+        margin-top:10px;
+        font-weight:bold;
+        }
+
+        QPushButton{
+        padding:6px;
+        font-weight:bold;
+        }
+
+        QPushButton#exitButton{
+        background-color:red;
+        color:white;
+        }
+
+        QSplitter::handle{
+        background-color:black;
+        width:4px;
+        }
+
+        """)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        main_layout = QHBoxLayout()
+        main_layout = QVBoxLayout()
         central_widget.setLayout(main_layout)
 
-        self.left_layout = QVBoxLayout()
-        main_layout.addLayout(self.left_layout, 1)
+        # SPLITTER (RESIZABLE PANELS)
 
-        arch_label = QLabel("Architecture")
+        splitter = QSplitter(Qt.Horizontal)
+        main_layout.addWidget(splitter)
+
+        # LEFT PANEL
+
+        left_widget = QWidget()
+        left_layout = QVBoxLayout()
+        left_widget.setLayout(left_layout)
+
         self.arch_combo = QComboBox()
-        self.arch_combo.addItems(["ARM", "AVR", "PIC", "Espressif"])
+        self.arch_combo.addItems(ARCHITECTURES)
 
-        protocol_label = QLabel("Protocol")
         self.protocol_combo = QComboBox()
-        self.protocol_combo.addItems(["UART", "I2C", "SPI"])
+        self.protocol_combo.addItems(GENERIC_PROTOCOLS.keys())
 
-        self.left_layout.addWidget(arch_label)
-        self.left_layout.addWidget(self.arch_combo)
-        self.left_layout.addSpacing(20)
-        self.left_layout.addWidget(protocol_label)
-        self.left_layout.addWidget(self.protocol_combo)
-        self.left_layout.addStretch()
+        left_layout.addWidget(QLabel("Architecture"))
+        left_layout.addWidget(self.arch_combo)
 
-        self.right_layout = QVBoxLayout()
-        main_layout.addLayout(self.right_layout, 3)
+        left_layout.addSpacing(20)
 
-        self.param_group = QGroupBox("Protocol Parameters")
-        self.param_layout = QFormLayout()
-        self.param_group.setLayout(self.param_layout)
-        self.right_layout.addWidget(self.param_group)
+        left_layout.addWidget(QLabel("Protocol"))
+        left_layout.addWidget(self.protocol_combo)
 
-        self.register_group = QGroupBox("Register Configuration")
+        left_layout.addStretch()
+
+        splitter.addWidget(left_widget)
+
+        # RIGHT PANEL
+
+        right_widget = QWidget()
+        right_layout = QVBoxLayout()
+        right_widget.setLayout(right_layout)
+
+        splitter.addWidget(right_widget)
+
+        splitter.setSizes([250, 850])
+
+        # SCROLL AREA
+
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+
+        self.container = QWidget()
         self.register_layout = QVBoxLayout()
-        self.register_group.setLayout(self.register_layout)
-        self.right_layout.addWidget(self.register_group)
+        self.container.setLayout(self.register_layout)
 
-        self.bit_tx = QCheckBox("TX Enable")
-        self.bit_rx = QCheckBox("RX Enable")
-        self.bit_interrupt = QCheckBox("Interrupt Enable")
+        self.scroll.setWidget(self.container)
 
-        self.register_layout.addWidget(self.bit_tx)
-        self.register_layout.addWidget(self.bit_rx)
-        self.register_layout.addWidget(self.bit_interrupt)
+        right_layout.addWidget(self.scroll)
+
+        # BUTTONS
+
+        btn_layout = QHBoxLayout()
+
+        self.refresh_button = QPushButton("Refresh")
+        self.refresh_button.setStyleSheet("""
+        background-color:#2196F3;
+        color:white;
+        """)
 
         self.generate_button = QPushButton("Generate Code")
-        self.generate_button.setMinimumHeight(40)
-        self.right_layout.addWidget(self.generate_button)
+        self.generate_button.setStyleSheet("""
+        background-color:#4CAF50;
+        color:white;
+        """)
 
-        self.right_layout.addStretch()
+        self.exit_button = QPushButton("Exit")
+        self.exit_button.setObjectName("exitButton")
 
-        self.statusBar().showMessage("Ready")
+        btn_layout.addWidget(self.refresh_button)
+        btn_layout.addWidget(self.generate_button)
+        btn_layout.addWidget(self.exit_button)
 
-        self.protocol_combo.currentTextChanged.connect(self.update_parameters)
+        right_layout.addLayout(btn_layout)
+
+        # SIGNALS
+
+        self.protocol_combo.currentTextChanged.connect(self.update_registers)
+        self.arch_combo.currentTextChanged.connect(self.update_registers)
+
+        self.refresh_button.clicked.connect(self.update_registers)
         self.generate_button.clicked.connect(self.generate_code)
 
-        self.update_parameters(self.protocol_combo.currentText())
+        self.exit_button.clicked.connect(self.close)
 
-    def clear_parameters(self):
-        while self.param_layout.rowCount() > 0:
-            self.param_layout.removeRow(0)
+        self.update_registers()
 
-    def update_parameters(self, protocol):
-        self.clear_parameters()
 
-        if protocol == "UART":
-            self.baudrate = QLineEdit()
-            self.databits = QLineEdit()
-            self.parity = QLineEdit()
+    def clear_registers(self):
 
-            self.param_layout.addRow("Baud Rate:", self.baudrate)
-            self.param_layout.addRow("Data Bits:", self.databits)
-            self.param_layout.addRow("Parity:", self.parity)
+        while self.register_layout.count():
+            item = self.register_layout.takeAt(0)
+            widget = item.widget()
 
-        elif protocol == "I2C":
-            self.clock_speed = QLineEdit()
-            self.device_address = QLineEdit()
+            if widget:
+                widget.deleteLater()
 
-            self.param_layout.addRow("Clock Speed:", self.clock_speed)
-            self.param_layout.addRow("Device Address:", self.device_address)
 
-        elif protocol == "SPI":
-            self.clock_speed = QLineEdit()
-            self.mode = QLineEdit()
-            self.bit_order = QLineEdit()
+    def update_registers(self):
 
-            self.param_layout.addRow("Clock Speed:", self.clock_speed)
-            self.param_layout.addRow("SPI Mode:", self.mode)
-            self.param_layout.addRow("Bit Order:", self.bit_order)
+        self.clear_registers()
 
-        self.statusBar().showMessage(f"{protocol} configuration loaded")
-
-    def generate_code(self):
-        architecture = self.arch_combo.currentText()
+        arch = self.arch_combo.currentText()
         protocol = self.protocol_combo.currentText()
 
-        tx = self.bit_tx.isChecked()
-        rx = self.bit_rx.isChecked()
-        interrupt = self.bit_interrupt.isChecked()
+        protocol_sections = GENERIC_PROTOCOLS[protocol]
+        arch_data = ARCH_REGISTERS[arch][protocol]
 
-        message = f"""
-Architecture: {architecture}
-Protocol: {protocol}
+        for section in protocol_sections:
 
-Register Settings:
-TX Enable: {tx}
-RX Enable: {rx}
-Interrupt Enable: {interrupt}
-"""
+            reg_real_name, bits = arch_data[section]
 
-        QMessageBox.information(self, "Generated Configuration", message)
-        self.statusBar().showMessage("Code Generated Successfully")
+            reg_group = QGroupBox(f"{section} ({reg_real_name})")
+
+            reg_layout = QVBoxLayout()
+
+            base_layout = QHBoxLayout()
+            base_layout.addWidget(QLabel("Base Address"))
+
+            base_edit = QLineEdit()
+            base_edit.setPlaceholderText("0x40000000")
+
+            base_layout.addWidget(base_edit)
+            reg_layout.addLayout(base_layout)
+
+            header = QHBoxLayout()
+            header.addWidget(QLabel("Bit Name"))
+            header.addWidget(QLabel("Position"))
+            header.addWidget(QLabel("Length (bits)"))
+
+            reg_layout.addLayout(header)
+
+            for bit_name in bits:
+
+                row = QHBoxLayout()
+
+                row.addWidget(QLabel(bit_name))
+
+                pos_edit = QLineEdit()
+                pos_edit.setAlignment(Qt.AlignCenter)
+                pos_edit.setPlaceholderText("Pos")
+
+                len_edit = QLineEdit()
+                len_edit.setAlignment(Qt.AlignCenter)
+                len_edit.setPlaceholderText("bits")
+
+                row.addWidget(pos_edit)
+                row.addWidget(len_edit)
+
+                reg_layout.addLayout(row)
+
+            reg_group.setLayout(reg_layout)
+
+            self.register_layout.addWidget(reg_group)
 
 
-app = QApplication(sys.argv)
-window = MainWindow()
-window.show()
-sys.exit(app.exec())
+    def generate_code(self):
+
+        arch = self.arch_combo.currentText()
+        protocol = self.protocol_combo.currentText()
+
+        print("\n===== GENERATED REGISTER TEMPLATE =====\n")
+
+        data = ARCH_REGISTERS[arch][protocol]
+
+        for section, (reg, bits) in data.items():
+
+            print(f"// {section}")
+            print(f"#define {reg}_ADDR   0x00000000")
+
+            for bit in bits:
+                print(f"#define {reg}_{bit}")
+
+            print("")
+
+
+if __name__ == "__main__":
+
+    app = QApplication(sys.argv)
+
+    window = MainWindow()
+    window.show()
+
+    sys.exit(app.exec())
